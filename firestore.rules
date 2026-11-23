@@ -1,0 +1,184 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Conteúdo público tem esquema próprio. Associados, inscrições, pedidos
+    // e valores de cobrança são lidos exclusivamente pela administração.
+    function autenticado() {
+      return request.auth != null;
+    }
+    function admin() {
+      return autenticado() && request.auth.token.firebase.sign_in_provider == 'password' &&
+        cargoAtivo(request.auth.uid);
+    }
+    function cargoAtivo(uid) {
+      let perm = /databases/$(database)/documents/administradores/$(uid);
+      return exists(perm) && get(perm).data.cargo == 'administrador_geral' &&
+        get(perm).data.ativo == true;
+    }
+    function texto(v, min, max) {
+      return v is string && v.size() >= min && v.size() <= max;
+    }
+    function documento(d, campos) {
+      return d.keys().hasAll(campos) && d.keys().hasOnly(campos);
+    }
+    function idValido(id) {
+      return id.matches('[A-Za-z0-9_-]{1,180}');
+    }
+    function numero(v, max) {
+      return v is number && v >= 0 && v <= max;
+    }
+    function criadoAgora(d) {
+      return d.criadoEm == request.time;
+    }
+    function criadoPreservado(d) {
+      return d.criadoEm == resource.data.criadoEm;
+    }
+    function fone(v) {
+      return texto(v, 8, 30) && v.matches('[0-9+() .-]+');
+    }
+    function foto(v) {
+      return texto(v, 24, 700000) && v.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+');
+    }
+    function nivel(v) {
+      return v in ['Iniciante', 'Intermediário', 'Avançado'];
+    }
+
+    match /administradores/{uid} {
+      allow get: if autenticado() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+
+    function membro(d) {
+      return documento(d, ['uid','nome','fone','nivel','bike','status','obs','pagos','criadoEm']) &&
+        (d.uid == null || texto(d.uid, 1, 128)) &&
+        texto(d.nome, 1, 120) && fone(d.fone) && nivel(d.nivel) &&
+        texto(d.bike, 0, 120) && texto(d.obs, 0, 2000) &&
+        d.status in ['ativo','pendente','inativo'] && d.pagos is map && d.pagos.size() <= 600;
+    }
+    match /cbc_membros/{id} {
+      allow read, delete: if admin();
+      allow create: if idValido(id) && membro(request.resource.data) && criadoAgora(request.resource.data) &&
+        request.resource.data.pagos.size() == 0 &&
+        ((admin() && request.resource.data.uid == null) ||
+         (autenticado() && id == request.auth.uid && request.resource.data.uid == id &&
+          request.resource.data.status == 'pendente' && request.resource.data.obs == ''));
+      allow update: if admin() && membro(request.resource.data) &&
+        request.resource.data.uid == resource.data.uid && criadoPreservado(request.resource.data);
+    }
+
+    function agenda(d, tipo) {
+      let comum = ['titulo','data','hora','local','vagas','descricao','ativo','confirmados','criadoEm','fimInscricoes'];
+      return documento(d, tipo == 'pedal' ? comum.concat(['distancia','nivel']) : comum.concat(['valor'])) &&
+        texto(d.titulo, 1, 160) && dataAgenda(d) &&
+        (d.hora == '' || (d.hora is string && d.hora.matches('[0-9]{2}:[0-9]{2}'))) &&
+        texto(d.local, 0, 160) && texto(d.descricao, 0, 3000) &&
+        d.vagas is int && numero(d.vagas, 10000) &&
+        d.confirmados is int && numero(d.confirmados, 1000000) && d.ativo is bool &&
+        (d.vagas == 0 || d.confirmados <= d.vagas) &&
+        (tipo == 'pedal' ? (numero(d.distancia, 10000) && (nivel(d.nivel) || d.nivel == 'Todos')) :
+          numero(d.valor, 100000));
+    }
+    function dataAgenda(d) {
+      let partes = d.data.split('-');
+      return d.data.matches('20[0-9]{2}-[0-9]{2}-[0-9]{2}') &&
+        d.fimInscricoes == timestamp.date(int(partes[0]), int(partes[1]), int(partes[2])) + duration.value(27, 'h');
+    }
+    function refInscricao(tipo, id, uid) {
+      return /databases/$(database)/documents/cbc_inscricoes/$(tipo + '_' + id + '_' + uid);
+    }
+    function reserva(tipo, id) {
+      let inscricao = refInscricao(tipo, id, request.auth.uid);
+      return autenticado() && resource.data.ativo == true && request.time < resource.data.fimInscricoes &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmados']) &&
+        request.resource.data.confirmados == resource.data.confirmados + 1 &&
+        (resource.data.vagas == 0 || request.resource.data.confirmados <= resource.data.vagas) &&
+        !exists(inscricao) && existsAfter(inscricao) &&
+        getAfter(inscricao).data.uid == request.auth.uid &&
+        getAfter(inscricao).data.tipo == tipo && getAfter(inscricao).data.refId == id;
+    }
+    match /{col}/{id} {
+      allow read: if col in ['cbc_pedais','cbc_eventos'] && (admin() || resource.data.ativo == true);
+      allow create: if col in ['cbc_pedais','cbc_eventos'] && admin() && idValido(id) &&
+        agenda(request.resource.data, col == 'cbc_pedais' ? 'pedal' : 'evento') &&
+        criadoAgora(request.resource.data) && request.resource.data.confirmados == 0;
+      allow update: if col in ['cbc_pedais','cbc_eventos'] &&
+        ((admin() && agenda(request.resource.data, col == 'cbc_pedais' ? 'pedal' : 'evento') &&
+          criadoPreservado(request.resource.data) && request.resource.data.confirmados <= resource.data.confirmados) ||
+        (autenticado() && reserva(col == 'cbc_pedais' ? 'pedal' : 'evento', id)));
+    }
+    function agendaRef(tipo, id) {
+      let col = tipo == 'pedal' ? 'cbc_pedais' : 'cbc_eventos';
+      return /databases/$(database)/documents/$(col)/$(id);
+    }
+    function reservaVinculada(d) {
+      let item = agendaRef(d.tipo, d.refId);
+      return exists(item) && get(item).data.ativo == true &&
+        getAfter(item).data.confirmados == get(item).data.confirmados + 1;
+    }
+    match /cbc_inscricoes/{id} {
+      allow read, delete: if admin();
+      allow create: if autenticado() &&
+        documento(request.resource.data, ['uid','tipo','refId','nome','fone','pago','criadoEm']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.tipo in ['pedal','evento'] && idValido(request.resource.data.refId) &&
+        id == request.resource.data.tipo + '_' + request.resource.data.refId + '_' + request.auth.uid &&
+        texto(request.resource.data.nome, 1, 120) && fone(request.resource.data.fone) &&
+        request.resource.data.pago == false && criadoAgora(request.resource.data) &&
+        reservaVinculada(request.resource.data);
+      allow update: if admin() && request.resource.data.pago is bool &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pago']);
+    }
+
+    match /cbc_galeria/{id} {
+      allow read: if true;
+      allow create: if admin() && idValido(id) &&
+        documento(request.resource.data, ['img','legenda','criadoEm']) &&
+        foto(request.resource.data.img) && texto(request.resource.data.legenda, 0, 240) &&
+        criadoAgora(request.resource.data);
+      allow delete: if admin();
+    }
+
+    function produto(d) {
+      return documento(d, ['nome','preco','tamanhos','descricao','img','ativo','criadoEm']) &&
+        texto(d.nome, 1, 120) && numero(d.preco, 100000) && texto(d.tamanhos, 0, 180) &&
+        texto(d.descricao, 0, 3000) && (d.img == '' || foto(d.img)) && d.ativo is bool;
+    }
+    match /cbc_produtos/{id} {
+      allow read: if admin() || resource.data.ativo == true;
+      allow create: if admin() && idValido(id) && produto(request.resource.data) && criadoAgora(request.resource.data);
+      allow update: if admin() && produto(request.resource.data) && criadoPreservado(request.resource.data);
+      allow delete: if admin();
+    }
+    function pedido(d) {
+      let produto = /databases/$(database)/documents/cbc_produtos/$(d.produtoId);
+      return documento(d, ['uid','produto','produtoId','tamanho','qtd','total','nome','fone','status','criadoEm']) &&
+        d.uid == request.auth.uid && idValido(d.produtoId) && texto(d.tamanho, 0, 40) &&
+        d.qtd is int && d.qtd >= 1 && d.qtd <= 50 &&
+        texto(d.nome, 1, 120) && fone(d.fone) && d.status == 'novo' &&
+        existeProduto(produto, d);
+    }
+    function existeProduto(caminho, d) {
+      return exists(caminho) && get(caminho).data.ativo == true &&
+        d.produto == get(caminho).data.nome &&
+        (get(caminho).data.tamanhos == '' ? d.tamanho == '' :
+          d.tamanho in get(caminho).data.tamanhos.split(',')) &&
+        d.total == get(caminho).data.preco * d.qtd;
+    }
+    match /cbc_pedidos/{id} {
+      allow read, delete: if admin();
+      allow create: if autenticado() && criadoAgora(request.resource.data) && pedido(request.resource.data);
+      allow update: if admin() && request.resource.data.status in ['novo','pago','entregue','cancelado'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+    match /cbc_config/publico {
+      allow get: if true;
+      allow create, update: if admin() && documento(request.resource.data, ['zap']) &&
+        (request.resource.data.zap == '' || fone(request.resource.data.zap));
+    }
+    match /cbc_config/geral {
+      allow get: if admin();
+      allow create, update: if admin() && documento(request.resource.data, ['mensalidade','pix']) &&
+        numero(request.resource.data.mensalidade, 100000) && texto(request.resource.data.pix, 0, 160);
+    }
+  }
+}

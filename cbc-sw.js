@@ -1,6 +1,19 @@
-const CACHE="cbc-v2";
-const ARQ=["./","./index.html","./cbc-manifest.json","./cbc-192.png","./cbc-512.png","./cbc-logo.png"];
-self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ARQ)));self.skipWaiting()});
-self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==CACHE).map(x=>caches.delete(x)))));self.clients.claim()});
-self.addEventListener("fetch",e=>{if(e.request.method!=="GET"||!e.request.url.startsWith(self.location.origin))return;
- e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(CACHE).then(x=>x.put(e.request,c));return r}).catch(()=>caches.match(e.request)))});
+const CACHE = "cbc-v3";
+const ARQUIVOS = ["./index.html", "./cbc-manifest.json", "./cbc-192.png", "./cbc-512.png", "./cbc-logo.png"];
+const PUBLICOS = new Set(ARQUIVOS.map(arquivo => new URL(arquivo, self.registration.scope).href));
+self.addEventListener("install", evento => {
+  evento.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ARQUIVOS)).then(() => self.skipWaiting()));
+});
+self.addEventListener("activate", evento => {
+  evento.waitUntil(caches.delete("cbc-v2").then(() => self.clients.claim()));
+});
+self.addEventListener("fetch", evento => {
+  const { request } = evento;
+  if (request.method !== "GET") return;
+  const inicio = self.registration.scope;
+  if (request.mode === "navigate" && (request.url === inicio || PUBLICOS.has(request.url))) {
+    evento.respondWith(fetch(request).catch(() => caches.match(new URL("index.html", inicio).href)));
+  } else if (PUBLICOS.has(request.url)) {
+    evento.respondWith(fetch(request).catch(() => caches.match(request)));
+  }
+});

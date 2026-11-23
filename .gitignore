@@ -1,0 +1,6 @@
+/firebase-web.json
+/firebase.preview.local.json
+/dist/
+/node_modules/
+*-debug.log
+/.firebase/
