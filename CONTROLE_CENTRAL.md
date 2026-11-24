@@ -102,3 +102,19 @@ Publicar Hosting somente após a confirmação das regras e dos provedores. Apó
 
 - Se for preciso voltar ao estado anterior sem release live, executar `firebase hosting:disable --project candeias-bike-clube --site candeias-bike-clube`, após autorização de rollback. Isso interrompe somente a publicação Firebase Hosting. A versão aprovada continua no GitHub Pages. [Referência do Firebase CLI](https://firebase.google.com/docs/cli/#hosting_commands)
 - Para restaurar o comportamento das regras anteriores, executar `firebase deploy --project candeias-bike-clube --only firestore:rules` a partir da pasta local `work/cbc12-rollback`, que contém a fonte arquivada e o `firebase.json` correspondente, após autorização de rollback. Essa operação não revoga gravações feitas entre releases. Os provedores já estavam habilitados no estado anterior. [Referência de implantação de regras](https://firebase.google.com/docs/rules/manage-deploy)
+
+## CMD-CBC-013 — Publicação oficial em 24/11/2026
+
+O responsável confirmou que ainda não existem dados reais no CBC. O bloqueio do inventário foi encerrado com base nessa declaração. O perfil do navegador integrado permaneceu sem inspeção. Dados de teste e armazenamento legado foram preservados.
+
+| Item | Resultado em produção |
+| --- | --- |
+| Site oficial | [Candeias Bike Clube](https://candeias-bike-clube.web.app) |
+| Regras Firestore | 11h02min44s BRT, revisão `34ac9415-aa95-482e-a147-a4e57c5ad8e2`. Fonte publicada igual à da branch. |
+| Firebase Hosting | 11h02min59s BRT, release `1795528979616000`, versão `c92dac1431a5d353`. Nove arquivos servidos idênticos ao build. |
+| Acesso público | Consultas sem login a agenda, galeria, catálogo e configuração pública aceitas. Coleções privadas e configuração financeira protegidas. |
+| Autenticação administrativa | Conta real habilitada, provedor e-mail/senha ativo e documento de autorização compatível com as regras publicadas. A confirmação do login pelo titular permanece pendente. |
+| Preservação | Spark sem faturamento vinculado. `main` permanece em `4f10c37` e o HTML servido pelo GitHub Pages coincide com a versão aprovada. Nenhum registro fictício criado em produção. |
+| Rollback | Fonte e revisão anteriores arquivadas em `work/cbc12-rollback`, fora do Git e de `dist`. Como este foi o primeiro release live, a recuperação de Hosting é a interrupção do site Firebase, conforme o procedimento do CMD-CBC-012. |
+
+A publicação de regras e Hosting foi expressamente autorizada. A ordem executada foi `firestore:rules` e, depois de confirmada a liberação das regras, `hosting`, exclusivamente no projeto `candeias-bike-clube`.

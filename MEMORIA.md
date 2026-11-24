@@ -25,3 +25,11 @@
 - O Firestore padrão tem uma coleção raiz, `administradores`, com um documento, e nenhuma coleção operacional CBC. A revisão vigente `cef625c2-cb28-4a85-8c34-985131e449fd` foi arquivada localmente em `work/cbc12-rollback`, fora de `dist` e do repositório. O Firebase Hosting do CBC não tem release live anterior.
 - Inventário somente leitura das oito chaves legadas nas origens conhecidas do CBC, `file:` e localhost. Nenhuma chave ativa foi encontrada nas bases de armazenamento do Edge Default e Chrome Default, Profile 1 e Profile 2. A consulta ao perfil do navegador integrado falhou. Outros navegadores, dispositivos e origens não identificadas ficaram sem verificação. O resultado não depende da existência de backup.
 - Publicação bloqueada pelo inventário legado incompleto no perfil integrado. Procedimento de recuperação da primeira publicação preparado no Controle Central. Nenhum deploy, alteração de regras, mudança de dados ou repetição de teste aprovado.
+
+## 24/11/2026 — CMD-CBC-013
+
+- O responsável confirmou que ainda não existem dados reais no CBC. A declaração encerra o bloqueio de inventário do CMD-CBC-012. O perfil do navegador integrado permaneceu sem inspeção. Nenhum dado de teste ou armazenamento legado foi apagado.
+
+- Publicação expressamente autorizada pelo responsável. Firestore publicado às 11h02min44s BRT, revisão `34ac9415-aa95-482e-a147-a4e57c5ad8e2`. Hosting publicado às 11h02min59s BRT, release `1795528979616000`, versão `c92dac1431a5d353`. Endereço oficial https://candeias-bike-clube.web.app.
+- Em produção, os nove arquivos servidos coincidem com o build. As regras ativas coincidem com a fonte da branch. Consultas públicas de agenda, galeria e catálogo passaram; a configuração pública aceitou leitura e as consultas privadas sem login foram recusadas. O Auth confirmou a conta administrativa habilitada, o provedor de senha e o documento compatível. A confirmação do login pelo titular permanece pendente.
+- O Firestore segue com apenas a coleção de administrador, sem dados de teste criados nesta etapa. Spark, `main` e o HTML aprovado do GitHub Pages foram conferidos após o deploy. O rollback original permanece arquivado em `work/cbc12-rollback` fora de `dist` e do Git.
